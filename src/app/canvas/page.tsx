@@ -54,7 +54,7 @@ export default function CanvasPage() {
   );
 
   // Canvas에 이미지와 동그라미 그리기
-  const drawCanvas = useCallback(() => {
+  const drawCanvas = useCallback((tempCircle?: Circle) => {
     const canvas = canvasRef.current;
     const image = imageRef.current;
     if (!canvas || !image) return;
@@ -69,7 +69,7 @@ export default function CanvasPage() {
     // 이미지 그리기
     ctx.drawImage(image, 0, 0);
 
-    // 동그라미 그리기
+    // 저장된 동그라미 그리기
     circles.forEach((circle) => {
       ctx.beginPath();
       ctx.arc(circle.x, circle.y, circle.radius, 0, 2 * Math.PI);
@@ -77,6 +77,17 @@ export default function CanvasPage() {
       ctx.lineWidth = 3;
       ctx.stroke();
     });
+
+    // 임시 동그라미 그리기 (드래그 중)
+    if (tempCircle && tempCircle.radius > 0) {
+      ctx.beginPath();
+      ctx.arc(tempCircle.x, tempCircle.y, tempCircle.radius, 0, 2 * Math.PI);
+      ctx.strokeStyle = "red";
+      ctx.lineWidth = 3;
+      ctx.setLineDash([5, 5]); // 점선으로 표시
+      ctx.stroke();
+      ctx.setLineDash([]); // 점선 해제
+    }
   }, [circles]);
 
   // 이미지 로드 시 Canvas 그리기
@@ -115,6 +126,20 @@ export default function CanvasPage() {
     if (coords) {
       setIsDrawing(true);
       setStartPoint(coords);
+    }
+  };
+
+  const handleMouseMove = (e: React.MouseEvent | React.TouchEvent) => {
+    if (!isDrawing || !startPoint) return;
+
+    const coords = getCanvasCoordinates(e);
+    if (coords) {
+      const radius = Math.sqrt(
+        Math.pow(coords.x - startPoint.x, 2) + Math.pow(coords.y - startPoint.y, 2)
+      );
+
+      // 실시간으로 임시 동그라미 그리기
+      drawCanvas({ x: startPoint.x, y: startPoint.y, radius });
     }
   };
 
@@ -316,8 +341,10 @@ export default function CanvasPage() {
                       ref={canvasRef}
                       className="w-full h-auto cursor-crosshair"
                       onMouseDown={handleMouseDown}
+                      onMouseMove={handleMouseMove}
                       onMouseUp={handleMouseUp}
                       onTouchStart={handleMouseDown}
+                      onTouchMove={handleMouseMove}
                       onTouchEnd={handleMouseUp}
                     />
                   </div>
