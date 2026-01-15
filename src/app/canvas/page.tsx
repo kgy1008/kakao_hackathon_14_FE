@@ -34,6 +34,7 @@ export default function CanvasPage() {
   const [startPoint, setStartPoint] = useState<{ x: number; y: number } | null>(null);
   const [editedImage, setEditedImage] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [canvasSize, setCanvasSize] = useState<{ width: number; height: number } | null>(null);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
@@ -183,19 +184,52 @@ export default function CanvasPage() {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
+    // Canvas 크기 정보를 저장 (results 단계에서 사용)
+    setCanvasSize({
+      width: canvas.width,
+      height: canvas.height,
+    });
+
     const dataUrl = canvas.toDataURL("image/png");
     setEditedImage(dataUrl);
     setCurrentStep("results");
   };
 
+  // 절대 좌표를 상대 좌표(0~1)로 정규화
+  // 왼쪽 위를 (0,0), 오른쪽 아래를 (1,1)로 변환
+  const normalizeCircles = (width: number, height: number) => {
+    if (width === 0 || height === 0) return [];
+
+    return circles.map((circle) => ({
+      x: circle.x / width,         // 0~1 사이 값 (왼쪽=0, 오른쪽=1)
+      y: circle.y / height,        // 0~1 사이 값 (위=0, 아래=1)
+      radius: circle.radius / Math.min(width, height), // 이미지 크기 대비 비율
+    }));
+  };
+
   const handleGenerateAi = async () => {
-    if (!editedImage) return;
+    if (!editedImage || !canvasSize) {
+      alert("이미지 정보를 찾을 수 없습니다.");
+      return;
+    }
 
     setIsGenerating(true);
     try {
+      // 상대 좌표로 변환하여 전송
+      const normalizedCircles = normalizeCircles(canvasSize.width, canvasSize.height);
+
+      console.log("📊 Canvas 정보:", {
+        width: canvasSize.width,
+        height: canvasSize.height,
+        circlesCount: circles.length,
+        normalizedCircles,
+      });
+
       const result = await generateAiInterior({
         image: editedImage,
-        circles: circles,
+        imageWidth: canvasSize.width,
+        imageHeight: canvasSize.height,
+        circles: normalizedCircles,
       });
 
       if (result.success && result.resultImageUrl) {
@@ -488,6 +522,7 @@ export default function CanvasPage() {
                     setUploadedRoomImg(null);
                     setCircles([]);
                     setEditedImage(null);
+                    setCanvasSize(null);
                   }}
                   disabled={isGenerating}
                 >
