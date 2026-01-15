@@ -15,7 +15,9 @@ import {
   Edit3,
   Eye,
   Trash2,
+  Loader2,
 } from "lucide-react";
+import { generateAiInterior } from "@/lib/api/ai-engine";
 
 type Step = "upload" | "edit" | "results";
 
@@ -31,11 +33,12 @@ export default function CanvasPage() {
   const [isDrawing, setIsDrawing] = useState(false);
   const [startPoint, setStartPoint] = useState<{ x: number; y: number } | null>(null);
   const [editedImage, setEditedImage] = useState<string | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
 
-  const { uploadedRoomImg, setUploadedRoomImg } = useUserStore();
+  const { uploadedRoomImg, setUploadedRoomImg, setAiResult } = useUserStore();
 
   const handleImageUpload = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -182,6 +185,31 @@ export default function CanvasPage() {
     const dataUrl = canvas.toDataURL("image/png");
     setEditedImage(dataUrl);
     setCurrentStep("results");
+  };
+
+  const handleGenerateAi = async () => {
+    if (!editedImage) return;
+
+    setIsGenerating(true);
+    try {
+      const result = await generateAiInterior({
+        image: editedImage,
+        circles: circles,
+      });
+
+      if (result.success && result.resultImageUrl) {
+        setAiResult(result.resultImageUrl);
+        // TODO: AI 결과 화면으로 이동하거나 표시
+        alert("AI 인테리어 생성이 완료되었습니다!");
+      } else {
+        alert(`오류: ${result.message || "AI 인테리어 생성에 실패했습니다."}`);
+      }
+    } catch (error) {
+      console.error("AI 생성 오류:", error);
+      alert("서버와의 통신 중 오류가 발생했습니다.");
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   const stepVariants = {
@@ -440,11 +468,17 @@ export default function CanvasPage() {
                 <Button
                   variant="outline"
                   className="w-full h-12"
-                  onClick={() => {
-                    setCurrentStep("edit");
-                  }}
+                  onClick={handleGenerateAi}
+                  disabled={isGenerating}
                 >
-                  AI 인테리어 시작하기
+                  {isGenerating ? (
+                    <>
+                      <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                      AI 생성 중...
+                    </>
+                  ) : (
+                    "AI 인테리어 시작하기"
+                  )}
                 </Button>
                 <Button
                   className="w-full bg-gradient-to-r from-violet-500 to-purple-600 hover:from-violet-600 hover:to-purple-700 h-12 text-base font-medium"
@@ -454,6 +488,7 @@ export default function CanvasPage() {
                     setCircles([]);
                     setEditedImage(null);
                   }}
+                  disabled={isGenerating}
                 >
                   새로 시작하기
                 </Button>
