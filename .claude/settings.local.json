@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(netstat:*)",
-      "Bash(findstr:*)"
+      "Bash(findstr:*)",
+      "Bash(tree:*)",
+      "Bash(npm run dev:*)"
     ]
   }
 }

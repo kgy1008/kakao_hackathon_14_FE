@@ -87,7 +87,3 @@ interface UserState {
   setAiResult: (img: string) => void;
 }
 ```
-
-## 5. Claude를 위한 지시사항 (Prompting)
-
-"위의 아키텍처와 기능을 바탕으로, `next.js 14 app router`를 사용하여 `shadcn/ui`로 디자인된 **모바일 퍼스트 인테리어 서비스**를 만들 거야. 먼저 `useUserStore.ts`를 작성하고, 바텀 네비게이션이 포함된 `RootLayout`을 짜줘. 그 후 `AI Canvas` 페이지의 3단계 퍼널 UI를 구현해줘."
