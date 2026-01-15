@@ -1,7 +1,14 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Loader2, Sparkles, Wand2, Check, MessageCircle, Save } from "lucide-react";
+import {
+  Loader2,
+  Sparkles,
+  Wand2,
+  Check,
+  MessageCircle,
+  Save,
+} from "lucide-react";
 import { useUserStore } from "@/store/useUserStore";
 import { generateAiInterior } from "@/features/ai-engine/api";
 import { getRecommendedProducts, Product } from "@/features/mock-products";
@@ -10,6 +17,80 @@ import VoteModal from "@/components/VoteModal";
 import { saveProject, AIResponse } from "@/features/project-storage";
 
 type Step = "idle" | "analyzing" | "settings" | "ready" | "result";
+
+/**
+ * Base64 문자열을 Data URL로 변환하는 헬퍼 함수
+ * @param base64String - 서버에서 받은 base64 문자열
+ * @param label - 로그용 라벨 (Before/After)
+ * @returns Data URL 형식의 문자열
+ */
+function processBase64Image(base64String: string, label: string): string {
+  console.log(`🔍 ${label} 이미지 처리 시작:`, {
+    length: base64String.length,
+    first100chars: base64String.substring(0, 100),
+    startsWithData: base64String.startsWith("data:"),
+    startsWithSlash: base64String.startsWith("/"),
+    startsWithI: base64String.startsWith("i"),
+  });
+
+  // 1. 공백, 줄바꿈 제거
+  let cleaned = base64String.trim().replace(/[\r\n\s]/g, "");
+
+  // 2. 이미 data URL 형식인 경우 그대로 반환
+  if (cleaned.startsWith("data:image/")) {
+    console.log(`✅ ${label}: 이미 data URL 형식`);
+    return cleaned;
+  }
+
+  // 3. 순수 base64 문자열인 경우 data URL로 변환
+  // PNG 시그니처 체크 (iVBORw0KGgo로 시작)
+  const isPNG = cleaned.startsWith("iVBORw0KGgo");
+  // JPEG 시그니처 체크 (/9j/로 시작)
+  const isJPEG = cleaned.startsWith("/9j/");
+
+  let imageFormat = "png";
+  if (isJPEG) {
+    imageFormat = "jpeg";
+    console.log(`🖼️ ${label}: JPEG 이미지 감지`);
+  } else if (isPNG) {
+    console.log(`🖼️ ${label}: PNG 이미지 감지`);
+  }
+
+  // base64 문자열은 영문자, 숫자, +, /, = 만 포함
+  const isBase64 = /^[A-Za-z0-9+/]+=*$/.test(cleaned.substring(0, 100));
+
+  if (isBase64) {
+    const dataUrl = `data:image/${imageFormat};base64,${cleaned}`;
+    console.log(
+      `✅ ${label}: 순수 base64 → data URL 변환 (${imageFormat}, ${cleaned.length} chars)`
+    );
+
+    // 이미지 유효성 간단 체크
+    try {
+      // base64의 첫 몇 바이트가 유효한지 확인
+      const firstBytes = cleaned.substring(0, 20);
+      if (firstBytes.length < 10) {
+        console.error(
+          `⚠️ ${label}: base64 데이터가 너무 짧습니다 (${firstBytes.length} chars)`
+        );
+      }
+    } catch (e) {
+      console.error(`⚠️ ${label}: base64 유효성 검사 실패`, e);
+    }
+
+    return dataUrl;
+  }
+
+  // 4. data:image 접두사만 없는 경우 (예: "base64,iVBORw...")
+  if (cleaned.startsWith("base64,")) {
+    console.log(`✅ ${label}: base64, 접두사 발견 → data URL 변환`);
+    return `data:image/png;${cleaned}`;
+  }
+
+  // 5. 그 외의 경우
+  console.warn(`⚠️ ${label}: 알 수 없는 형식, 기본 PNG로 변환 시도`);
+  return `data:image/png;base64,${cleaned}`;
+}
 
 const MOOD_OPTIONS = [
   { id: "modern", label: "모던", description: "깔끔하고 세련된 현대적 스타일" },
@@ -118,20 +199,20 @@ export default function AIResultSection() {
 
   const handleShareVote = () => {
     // 선택한 상품 정보 가져오기
-    const selectedProducts = recommendedProducts.filter(p =>
+    const selectedProducts = recommendedProducts.filter((p) =>
       selectedProductIds.includes(p.id)
     );
 
     if (selectedProducts.length !== 2) {
-      alert('2개의 상품을 선택해주세요');
+      alert("2개의 상품을 선택해주세요");
       return;
     }
 
     // 투표 생성
     const vote = createVote(
-      '홈즈 사용자', // 실제로는 로그인한 사용자 이름
+      "홈즈 사용자", // 실제로는 로그인한 사용자 이름
       selectedProducts,
-      aiResultImg || ''
+      aiResultImg || ""
     );
 
     setCurrentVote(vote);
@@ -140,15 +221,15 @@ export default function AIResultSection() {
 
   const handleSaveProject = () => {
     if (!uploadedRoomImg || !aiResultImg || !apiResponse) {
-      alert('프로젝트 정보가 부족합니다');
+      alert("프로젝트 정보가 부족합니다");
       return;
     }
 
     // 프로젝트 제목 생성 (무드 기반)
     const moodLabels = selectedMoods
-      .map(id => MOOD_OPTIONS.find(m => m.id === id)?.label)
+      .map((id) => MOOD_OPTIONS.find((m) => m.id === id)?.label)
       .filter(Boolean)
-      .join(' & ');
+      .join(" & ");
     const title = `${moodLabels} 인테리어`;
 
     // 프로젝트 저장
@@ -162,7 +243,7 @@ export default function AIResultSection() {
     );
 
     setProjectSaved(true);
-    alert('프로젝트가 저장되었습니다!');
+    alert("프로젝트가 저장되었습니다!");
   };
 
   // 개발자 모드: AI 생성 완료 상태로 점프
@@ -170,7 +251,7 @@ export default function AIResultSection() {
     // Mock 무드 & 주거 형태 설정
     setPersona({
       moods: ["modern", "minimal"],
-      residenceType: "monthly"
+      residenceType: "monthly",
     });
     setRecommendedMoods(["modern", "minimal", "wood"]);
 
@@ -237,19 +318,93 @@ export default function AIResultSection() {
       });
 
       if (result.success) {
+        console.log("🎉 API 응답 성공 - 전체 데이터:", result);
+
+        // 서버 응답 구조 확인
+        const responseData = result as any;
+        console.log("📊 응답 데이터 구조:", {
+          keys: Object.keys(responseData),
+          hasEditedImage: !!responseData.editedImageBase64,
+          hasFinalImage: !!responseData.finalImageBase64,
+          hasRecommendedProducts: !!responseData.recommended_products,
+          recommendedProductsLength: responseData.recommended_products?.length,
+          firstProductKeys: responseData.recommended_products?.[0]
+            ? Object.keys(responseData.recommended_products[0])
+            : [],
+        });
+
         // API 응답 저장
         setApiResponse(result as any as AIResponse);
 
-        // Before 이미지: edited_image_base64가 있으면 사용, 없으면 기존 이미지
-        if (result.editedImageBase64) {
-          setUploadedRoomImg(`data:image/png;base64,${result.editedImageBase64}`);
+        // Before 이미지: edited_image_base64가 있으면 사용, 없으면 기존 이미지 유지
+        if (responseData.editedImageBase64) {
+          try {
+            const beforeImg = processBase64Image(
+              responseData.editedImageBase64,
+              "Before"
+            );
+            setUploadedRoomImg(beforeImg);
+            console.log("✅ Before 이미지 설정 완료");
+          } catch (err) {
+            console.error("❌ Before 이미지 처리 오류:", err);
+          }
+        } else {
+          console.log("ℹ️ editedImageBase64 없음, 기존 이미지 유지");
         }
 
-        // After 이미지: final_image_base64 사용
-        if (result.finalImageBase64) {
-          setAiResult(`data:image/png;base64,${result.finalImageBase64}`);
-        } else if (result.resultImageUrl) {
-          setAiResult(result.resultImageUrl);
+        // After 이미지: 여러 가능성 체크
+        let afterImageSet = false;
+
+        // 1. finalImageBase64 체크
+        if (responseData.finalImageBase64) {
+          try {
+            const afterImg = processBase64Image(
+              responseData.finalImageBase64,
+              "After"
+            );
+            setAiResult(afterImg);
+            afterImageSet = true;
+            console.log("✅ After 이미지 설정 완료 (finalImageBase64)");
+          } catch (err) {
+            console.error("❌ After 이미지 처리 오류 (finalImageBase64):", err);
+          }
+        }
+
+        // 2. recommended_products[0].simulated_image_base64 체크
+        if (
+          !afterImageSet &&
+          responseData.recommended_products?.[0]?.simulated_image_base64
+        ) {
+          try {
+            const afterImg = processBase64Image(
+              responseData.recommended_products[0].simulated_image_base64,
+              "After (from product)"
+            );
+            setAiResult(afterImg);
+            afterImageSet = true;
+            console.log(
+              "✅ After 이미지 설정 완료 (product.simulated_image_base64)"
+            );
+          } catch (err) {
+            console.error("❌ After 이미지 처리 오류 (product):", err);
+          }
+        }
+
+        // 3. resultImageUrl 체크
+        if (!afterImageSet && responseData.resultImageUrl) {
+          setAiResult(responseData.resultImageUrl);
+          afterImageSet = true;
+          console.log(
+            "✅ After 이미지 설정 완료 (resultImageUrl):",
+            responseData.resultImageUrl
+          );
+        }
+
+        if (!afterImageSet) {
+          console.error(
+            "❌ After 이미지를 찾을 수 없습니다. 응답 전체:",
+            responseData
+          );
         }
 
         setStep("result");
@@ -527,179 +682,209 @@ export default function AIResultSection() {
       {step === "result" && (
         <div className="space-y-8">
           <div className="grid grid-cols-2 gap-8">
-          {/* Left: Before/After Slider */}
-          <div className="bg-white rounded-2xl shadow-sm p-8 border border-gray-200">
-            <div className="relative w-full aspect-[4/3] bg-gray-100 rounded-xl overflow-hidden">
-              {/* Before Image */}
-              <div className="absolute inset-0">
-                <img
-                  src={uploadedRoomImg || ""}
-                  alt="Before"
-                  className="w-full h-full object-cover"
-                />
-              </div>
+            {/* Left: Before/After Slider */}
+            <div className="bg-white rounded-2xl shadow-sm p-8 border border-gray-200">
+              <div className="relative w-full aspect-[4/3] bg-gray-100 rounded-xl overflow-hidden">
+                {/* Before Image */}
+                <div className="absolute inset-0">
+                  {uploadedRoomImg ? (
+                    <img
+                      src={uploadedRoomImg}
+                      alt="Before"
+                      className="w-full h-full object-cover"
+                      onLoad={() => console.log("✅ Before 이미지 로드 성공")}
+                      onError={(e) => {
+                        console.error("❌ Before 이미지 로드 실패:", {
+                          url: uploadedRoomImg.substring(0, 200),
+                          isDataUrl: uploadedRoomImg.startsWith("data:"),
+                          length: uploadedRoomImg.length,
+                        });
+                      }}
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-gray-400">
+                      Before 이미지 없음
+                    </div>
+                  )}
+                </div>
 
-              {/* After Image with Clip */}
-              <div
-                className="absolute inset-0"
-                style={{ clipPath: `inset(0 ${100 - sliderPosition}% 0 0)` }}
-              >
-                <img
-                  src={aiResultImg || ""}
-                  alt="After"
-                  className="w-full h-full object-cover"
-                />
-              </div>
+                {/* After Image with Clip */}
+                <div
+                  className="absolute inset-0"
+                  style={{ clipPath: `inset(0 ${100 - sliderPosition}% 0 0)` }}
+                >
+                  {aiResultImg ? (
+                    <img
+                      src={aiResultImg}
+                      alt="After"
+                      className="w-full h-full object-cover"
+                      onLoad={() => console.log("✅ After 이미지 로드 성공")}
+                      onError={(e) => {
+                        console.error("❌ After 이미지 로드 실패:", {
+                          url: aiResultImg.substring(0, 200),
+                          isDataUrl: aiResultImg.startsWith("data:"),
+                          length: aiResultImg.length,
+                        });
+                      }}
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-gray-400">
+                      After 이미지 없음
+                    </div>
+                  )}
+                </div>
 
-              {/* Slider Handle */}
-              <div
-                className="absolute top-0 bottom-0 w-1 bg-white cursor-ew-resize shadow-lg z-10"
-                style={{ left: `${sliderPosition}%` }}
-              >
-                <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-10 h-10 bg-white rounded-full shadow-lg flex items-center justify-center">
-                  <div className="flex gap-1">
-                    <div className="w-0.5 h-4 bg-gray-400"></div>
-                    <div className="w-0.5 h-4 bg-gray-400"></div>
+                {/* Slider Handle */}
+                <div
+                  className="absolute top-0 bottom-0 w-1 bg-white cursor-ew-resize shadow-lg z-10"
+                  style={{ left: `${sliderPosition}%` }}
+                >
+                  <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-10 h-10 bg-white rounded-full shadow-lg flex items-center justify-center">
+                    <div className="flex gap-1">
+                      <div className="w-0.5 h-4 bg-gray-400"></div>
+                      <div className="w-0.5 h-4 bg-gray-400"></div>
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              {/* Slider Input */}
-              <input
-                type="range"
-                min="0"
-                max="100"
-                value={sliderPosition}
-                onChange={(e) => setSliderPosition(Number(e.target.value))}
-                className="absolute inset-0 w-full h-full opacity-0 cursor-ew-resize z-20"
-              />
+                {/* Slider Input */}
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={sliderPosition}
+                  onChange={(e) => setSliderPosition(Number(e.target.value))}
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-ew-resize z-20"
+                />
 
-              {/* Labels */}
-              <div className="absolute bottom-4 left-4 px-3 py-1 bg-black/50 backdrop-blur-sm rounded-full text-white text-sm font-medium">
-                원본
-              </div>
-              <div className="absolute bottom-4 right-4 px-3 py-1 bg-black/50 backdrop-blur-sm rounded-full text-white text-sm font-medium">
-                AI 결과
-              </div>
-            </div>
-          </div>
-
-          {/* Right: Result Info */}
-          <div className="bg-white rounded-2xl shadow-sm p-8 border border-gray-200">
-            <div className="flex items-center gap-3 mb-6">
-              <Sparkles size={24} className="text-blue-600" />
-              <h3 className="text-xl font-bold text-gray-900">AI 생성 완료!</h3>
-            </div>
-
-            <div className="space-y-6">
-              {/* Style Info */}
-              <div>
-                <label className="text-sm text-gray-600 mb-2 block">
-                  적용 스타일
-                </label>
-                <div className="p-4 bg-gray-50 rounded-lg">
-                  <p className="font-bold text-gray-900">
-                    {selectedMoods
-                      .map(
-                        (id) =>
-                          MOOD_OPTIONS.find((m) => m.id === id)?.label || id
-                      )
-                      .join(", ")}
-                  </p>
+                {/* Labels */}
+                <div className="absolute bottom-4 left-4 px-3 py-1 bg-black/50 backdrop-blur-sm rounded-full text-white text-sm font-medium">
+                  원본
+                </div>
+                <div className="absolute bottom-4 right-4 px-3 py-1 bg-black/50 backdrop-blur-sm rounded-full text-white text-sm font-medium">
+                  AI 결과
                 </div>
               </div>
+            </div>
 
-              {/* Residence Type Info */}
-              <div>
-                <label className="text-sm text-gray-600 mb-2 block">
-                  주거 형태
-                </label>
-                <div className="p-4 bg-gray-50 rounded-lg">
-                  <p className="font-bold text-gray-900">
-                    {RESIDENCE_TYPES.find((t) => t.id === residenceType)
-                      ?.label || residenceType}
-                    {residenceType === "monthly" && (
-                      <span className="text-blue-600 text-xs ml-2">
-                        (무타공 제품)
-                      </span>
+            {/* Right: Result Info */}
+            <div className="bg-white rounded-2xl shadow-sm p-8 border border-gray-200">
+              <div className="flex items-center gap-3 mb-6">
+                <Sparkles size={24} className="text-blue-600" />
+                <h3 className="text-xl font-bold text-gray-900">
+                  AI 생성 완료!
+                </h3>
+              </div>
+
+              <div className="space-y-6">
+                {/* Style Info */}
+                <div>
+                  <label className="text-sm text-gray-600 mb-2 block">
+                    적용 스타일
+                  </label>
+                  <div className="p-4 bg-gray-50 rounded-lg">
+                    <p className="font-bold text-gray-900">
+                      {selectedMoods
+                        .map(
+                          (id) =>
+                            MOOD_OPTIONS.find((m) => m.id === id)?.label || id
+                        )
+                        .join(", ")}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Residence Type Info */}
+                <div>
+                  <label className="text-sm text-gray-600 mb-2 block">
+                    주거 형태
+                  </label>
+                  <div className="p-4 bg-gray-50 rounded-lg">
+                    <p className="font-bold text-gray-900">
+                      {RESIDENCE_TYPES.find((t) => t.id === residenceType)
+                        ?.label || residenceType}
+                      {residenceType === "monthly" && (
+                        <span className="text-blue-600 text-xs ml-2">
+                          (무타공 제품)
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Success Message */}
+                <div className="p-4 bg-green-50 rounded-lg">
+                  <p className="text-sm font-bold text-green-900 mb-1">
+                    ✅ AI 생성 완료!
+                  </p>
+                  <p className="text-sm text-green-700">
+                    슬라이더를 움직여 원본과 비교해보세요
+                  </p>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="space-y-3">
+                  {/* Save Project Button */}
+                  <button
+                    onClick={handleSaveProject}
+                    disabled={projectSaved}
+                    className={`w-full px-6 py-3 rounded-lg font-bold transition-all flex items-center justify-center gap-2 ${
+                      projectSaved
+                        ? "bg-green-100 text-green-700 cursor-not-allowed"
+                        : "bg-blue-600 text-white hover:bg-blue-700"
+                    }`}
+                  >
+                    {projectSaved ? (
+                      <>
+                        <Check size={20} />
+                        프로젝트 저장됨
+                      </>
+                    ) : (
+                      <>
+                        <Save size={20} />
+                        프로젝트 저장하기
+                      </>
                     )}
-                  </p>
+                  </button>
+
+                  {/* Regenerate Button */}
+                  <button
+                    onClick={handleGenerateAi}
+                    disabled={isGenerating}
+                    className="w-full px-6 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  >
+                    {isGenerating ? (
+                      <>
+                        <Loader2 size={20} className="animate-spin" />
+                        AI 생성 중...
+                      </>
+                    ) : (
+                      <>
+                        <Wand2 size={20} />
+                        다시 생성하기
+                      </>
+                    )}
+                  </button>
+
+                  {/* View Products Button */}
+                  <button
+                    onClick={handleViewProducts}
+                    className="w-full px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg hover:from-blue-700 hover:to-purple-700 transition-all font-bold flex items-center justify-center gap-2"
+                  >
+                    <Sparkles size={20} />
+                    AI 추천 상품 보기
+                  </button>
                 </div>
-              </div>
 
-              {/* Success Message */}
-              <div className="p-4 bg-green-50 rounded-lg">
-                <p className="text-sm font-bold text-green-900 mb-1">
-                  ✅ AI 생성 완료!
-                </p>
-                <p className="text-sm text-green-700">
-                  슬라이더를 움직여 원본과 비교해보세요
-                </p>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="space-y-3">
-                {/* Save Project Button */}
+                {/* Back to Settings Button */}
                 <button
-                  onClick={handleSaveProject}
-                  disabled={projectSaved}
-                  className={`w-full px-6 py-3 rounded-lg font-bold transition-all flex items-center justify-center gap-2 ${
-                    projectSaved
-                      ? 'bg-green-100 text-green-700 cursor-not-allowed'
-                      : 'bg-blue-600 text-white hover:bg-blue-700'
-                  }`}
+                  onClick={() => setStep("settings")}
+                  className="w-full px-6 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
                 >
-                  {projectSaved ? (
-                    <>
-                      <Check size={20} />
-                      프로젝트 저장됨
-                    </>
-                  ) : (
-                    <>
-                      <Save size={20} />
-                      프로젝트 저장하기
-                    </>
-                  )}
-                </button>
-
-                {/* Regenerate Button */}
-                <button
-                  onClick={handleGenerateAi}
-                  disabled={isGenerating}
-                  className="w-full px-6 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                  {isGenerating ? (
-                    <>
-                      <Loader2 size={20} className="animate-spin" />
-                      AI 생성 중...
-                    </>
-                  ) : (
-                    <>
-                      <Wand2 size={20} />
-                      다시 생성하기
-                    </>
-                  )}
-                </button>
-
-                {/* View Products Button */}
-                <button
-                  onClick={handleViewProducts}
-                  className="w-full px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg hover:from-blue-700 hover:to-purple-700 transition-all font-bold flex items-center justify-center gap-2"
-                >
-                  <Sparkles size={20} />
-                  AI 추천 상품 보기
+                  설정 변경하기
                 </button>
               </div>
-
-              {/* Back to Settings Button */}
-              <button
-                onClick={() => setStep("settings")}
-                className="w-full px-6 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
-              >
-                설정 변경하기
-              </button>
             </div>
-          </div>
           </div>
 
           {/* Products Section - 상품 추천 버튼 클릭 시 표시 */}
@@ -794,7 +979,8 @@ export default function AIResultSection() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-medium text-gray-900 mb-1">
-                      {selectedProductIds.length === 0 && "2개의 상품을 선택해주세요"}
+                      {selectedProductIds.length === 0 &&
+                        "2개의 상품을 선택해주세요"}
                       {selectedProductIds.length === 1 && "1개 더 선택해주세요"}
                       {selectedProductIds.length === 2 && "✅ 2개 선택 완료!"}
                     </p>
