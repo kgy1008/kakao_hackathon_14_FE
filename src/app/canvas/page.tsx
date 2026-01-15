@@ -444,7 +444,7 @@ export default function CanvasPage() {
                     setCurrentStep("edit");
                   }}
                 >
-                  다시 편집하기
+                  AI 인테리어 시작하기
                 </Button>
                 <Button
                   className="w-full bg-gradient-to-r from-violet-500 to-purple-600 hover:from-violet-600 hover:to-purple-700 h-12 text-base font-medium"
